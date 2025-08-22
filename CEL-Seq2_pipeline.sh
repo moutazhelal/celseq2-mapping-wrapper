@@ -35,6 +35,11 @@ STAR_BIN="${STAR_BIN:-STAR}"
 BEDTOOLS_BIN="${BEDTOOLS_BIN:-bedtools}"
 SAMTOOLS_BIN="${SAMTOOLS_BIN:-samtools}"
 
+# MultiQC settings
+RUN_MULTIQC="${RUN_MULTIQC:-true}"
+MULTIQC_BIN="${MULTIQC_BIN:-multiqc}"
+MULTIQC_CONFIG="${MULTIQC_CONFIG:-}"
+
 # Helper scripts (bundled in repo's tools/ by default)
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 SCRIPTS_DIR_DEFAULT="${SCRIPT_DIR}/tools"
@@ -60,7 +65,7 @@ banner () {
 step () { echo "[$(date '+%F %T')]   → $*"; }
 die () { echo "FATAL: $*" >&2; exit 1; }
 
-trap 'ec=$?; echo "Error on line ${BASH_LINENO[0]} (cmd: ${BASH_COMMAND})" >&2; exit $ec' ERR
+trap 'ec=$?; echo "Error on or near line ${LINENO} (cmd: ${BASH_COMMAND})" >&2; exit $ec' ERR
 
 usage () {
   cat <<EOF
@@ -119,45 +124,26 @@ Examples:
 EOF
 }
 
-# -------- Arg parsing --------
+# -------- Helper Functions (defined early) --------
 
-# ---- Pre-parse tool override flags (do this before the main parser) ----
-STAR_BIN="${STAR_BIN:-}"
-BEDTOOLS_BIN="${BEDTOOLS_BIN:-}"
-SAMTOOLS_BIN="${SAMTOOLS_BIN:-}"
-TRIM_GALORE="${TRIM_GALORE:-}"
-CUTADAPT_BIN="${CUTADAPT_BIN:-}"
-
-if [[ $# -gt 0 ]]; then
-  __newargs=()
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --star) STAR_BIN="$2"; shift 2;;
-      --bedtools) BEDTOOLS_BIN="$2"; shift 2;;
-      --samtools) SAMTOOLS_BIN="$2"; shift 2;;
-      --trim-galore) TRIM_GALORE="$2"; shift 2;;
-      --cutadapt) CUTADAPT_BIN="$2"; shift 2;;
-      --multiqc) MULTIQC_BIN="$2"; shift 2;;
-      --multiqc-config) MULTIQC_CONFIG="$2"; shift 2;;
-      --no-multiqc) RUN_MULTIQC="false"; shift 1;;
-      *) __newargs+=("$1"); shift;;
-    esac
-  done
-
-# ---- Final quality summary ----
-run_multiqc
-  set -- "${__newargs[@]}"
-fi
-
-# Defaults to environment (PATH) unless explicitly overridden above
-: "${STAR_BIN:=STAR}"
-: "${BEDTOOLS_BIN:=bedtools}"
-: "${SAMTOOLS_BIN:=samtools}"
-: "${TRIM_GALORE:=trim_galore}"
-: "${CUTADAPT_BIN:=cutadapt}"
+run_multiqc () {
+  if [[ "${RUN_MULTIQC}" != "true" ]]; then
+    step "Skipping MultiQC (disabled)."
+    return 0
+  fi
+  banner "Running MultiQC summary"
+  local outdir="${RESULTS_DIR}/multiqc"
+  mkdir -p "${outdir}"
+  # Search the entire results dir for logs/metrics from all steps
+  if [[ -n "${MULTIQC_CONFIG}" ]]; then
+    "${MULTIQC_BIN}" "${RESULTS_DIR}" -o "${outdir}" -c "${MULTIQC_CONFIG}" 2>&1 | tee "${outdir}/multiqc.log"
+  else
+    "${MULTIQC_BIN}" "${RESULTS_DIR}" -o "${outdir}" 2>&1 | tee "${outdir}/multiqc.log"
+  fi
+  step "MultiQC report: ${outdir}/multiqc_report.html"
+}
 
 # ---- Tool resolution helpers ----
-die () { echo "FATAL: $*" >&2; exit 1; }
 __resolve_bin () {
   local var_name="$1" default_name="$2"
   local current; eval "current=\"\${${var_name}:-}\""
@@ -168,6 +154,7 @@ __resolve_bin () {
   local abs; abs="$(command -v "$candidate")"
   eval "${var_name}=\"${abs}\""
 }
+
 resolve_all_tools () {
   __resolve_bin STAR_BIN STAR
   __resolve_bin BEDTOOLS_BIN bedtools
@@ -178,6 +165,7 @@ resolve_all_tools () {
     __resolve_bin MULTIQC_BIN multiqc
   fi
 }
+
 print_tool_versions () {
   echo "Tools detected:"
   echo "  STAR:        ${STAR_BIN}  ($("$STAR_BIN" --version 2>/dev/null | head -n1 || true))"
@@ -197,58 +185,18 @@ print_tool_versions () {
     fi
   fi
 }
-# -----------------------------------------------------------------------
-ARGS=()
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --manifest) MANIFEST_CSV="$2"; shift 2;;
-    --results-dir) RESULTS_DIR="$2"; shift 2;;
-    --genome-index) GENOME_INDEX="$2"; shift 2;;
-    --genome-fasta) GENOME_FASTA="$2"; shift 2;;
-    --gtf) GTF="$2"; shift 2;;
-    --sjdb-overhang) SJDB_OVERHANG="$2"; shift 2;;
-    --threads) THREADS="$2"; shift 2;;
-    --exint-dir) EXINT_DIR="$2"; shift 2;;
-    --exint-basename) EXINT_BASENAME="$2"; shift 2;;
-    --trim-galore) TRIM_GALORE="$2"; shift 2;;
-    --cutadapt) CUTADAPT_BIN="$2"; shift 2;;
-    --star) STAR_BIN="$2"; shift 2;;
-    --bedtools) BEDTOOLS_BIN="$2"; shift 2;;
-    --samtools) SAMTOOLS_BIN="$2"; shift 2;;
-    --scripts-dir) SCRIPTS_DIR="$2"; shift 2;;
-    --concatenator) CONCATENATOR_PY="$2"; shift 2;;
-    --exint-maker) EXINT_MAKER_PY="$2"; shift 2;;
-    --get-intronsexons) GET_INTRONSEXONS="$2"; shift 2;;
-    --bcread) BCR_READ="$2"; shift 2;;
-    --bioread) BIO_READ="$2"; shift 2;;
-    --len-cbc) LEN_CBC="$2"; shift 2;;
-    --len-umi) LEN_UMI="$2"; shift 2;;
-    --umi-first) UMI_FIRST="$2"; shift 2;;
-    --cbc-hd) CBC_HD="$2"; shift 2;;
-    -h|--help) usage; exit 0;;
-    *) ARGS+=("$1"); shift;;
-  esac
-done
-set -- "${ARGS[@]:-}"
 
-# Required checks
-[[ -n "${GENOME_FASTA}" ]] || { echo "ERROR: --genome-fasta is required"; usage; exit 2; }
-[[ -n "${GTF}" ]] || { echo "ERROR: --gtf is required"; usage; exit 2; }
-[[ -s "${MANIFEST_CSV}" ]] || { echo "ERROR: manifest not found: ${MANIFEST_CSV}"; usage; exit 2; }
-
-# Create output dirs
-mkdir -p "${RESULTS_DIR}" "${EXINT_DIR}"
-
-# -------- Helpers --------
 check_writable_dir () {
   local d="$1"
   mkdir -p "$d" || die "Cannot create directory: $d"
   [[ -w "$d" ]] || die "No write permission in: $d"
 }
+
 valid_star_index () {
   local idx="$1"
   [[ -d "$idx" && -s "$idx/Genome" && -s "$idx/SA" && -s "$idx/SAindex" ]]
 }
+
 ensure_star_index () {
   if [[ -n "${GENOME_INDEX}" ]] && valid_star_index "${GENOME_INDEX}"; then
     step "Found existing STAR index: ${GENOME_INDEX}"
@@ -287,10 +235,6 @@ ensure_exint () {
   [[ -s "$introns" && -s "$exons" ]] || die "Failed to generate EXINt BEDs in ${EXINT_DIR}"
   step "EXINt BEDs ready."
 }
-
-# Resolve tool paths now (prefers overrides; falls back to PATH)
-resolve_all_tools
-print_tool_versions
 
 check_tools () {
   command -v python3 >/dev/null || die "python3 not found in PATH"
@@ -395,22 +339,100 @@ run_sample () {
   echo
 }
 
-run_multiqc () {
-  if [[ "${RUN_MULTIQC}" != "true" ]]; then
-    step "Skipping MultiQC (disabled)."
-    return 0
-  fi
-  banner "Running MultiQC summary"
-  local outdir="${RESULTS_DIR}/multiqc"
-  mkdir -p "${outdir}"
-  # Search the entire results dir for logs/metrics from all steps
-  if [[ -n "${MULTIQC_CONFIG}" ]]; then
-    "${MULTIQC_BIN}" "${RESULTS_DIR}" -o "${outdir}" -c "${MULTIQC_CONFIG}" 2>&1 | tee "${outdir}/multiqc.log"
-  else
-    "${MULTIQC_BIN}" "${RESULTS_DIR}" -o "${outdir}" 2>&1 | tee "${outdir}/multiqc.log"
-  fi
-  step "MultiQC report: ${outdir}/multiqc_report.html"
-}
+# -------- Arg parsing --------
+
+# ---- Pre-parse tool override flags (do this before the main parser) ----
+STAR_BIN="${STAR_BIN:-}"
+BEDTOOLS_BIN="${BEDTOOLS_BIN:-}"
+SAMTOOLS_BIN="${SAMTOOLS_BIN:-}"
+TRIM_GALORE="${TRIM_GALORE:-}"
+CUTADAPT_BIN="${CUTADAPT_BIN:-}"
+
+if [[ $# -gt 0 ]]; then
+  __newargs=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --star) STAR_BIN="$2"; shift 2;;
+      --bedtools) BEDTOOLS_BIN="$2"; shift 2;;
+      --samtools) SAMTOOLS_BIN="$2"; shift 2;;
+      --trim-galore) TRIM_GALORE="$2"; shift 2;;
+      --cutadapt) CUTADAPT_BIN="$2"; shift 2;;
+      --multiqc) MULTIQC_BIN="$2"; shift 2;;
+      --multiqc-config) MULTIQC_CONFIG="$2"; shift 2;;
+      --no-multiqc) RUN_MULTIQC="false"; shift 1;;
+      *) __newargs+=("$1"); shift;;
+    esac
+  done
+  set -- "${__newargs[@]}"
+fi
+
+# Defaults to environment (PATH) unless explicitly overridden above
+: "${STAR_BIN:=STAR}"
+: "${BEDTOOLS_BIN:=bedtools}"
+: "${SAMTOOLS_BIN:=samtools}"
+: "${TRIM_GALORE:=trim_galore}"
+: "${CUTADAPT_BIN:=cutadapt}"
+
+# -----------------------------------------------------------------------
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --manifest) MANIFEST_CSV="$2"; shift 2;;
+    --results-dir) RESULTS_DIR="$2"; shift 2;;
+    --genome-index) GENOME_INDEX="$2"; shift 2;;
+    --genome-fasta) GENOME_FASTA="$2"; shift 2;;
+    --gtf) GTF="$2"; shift 2;;
+    --sjdb-overhang) SJDB_OVERHANG="$2"; shift 2;;
+    --threads) THREADS="$2"; shift 2;;
+    --exint-dir) EXINT_DIR="$2"; shift 2;;
+    --exint-basename) EXINT_BASENAME="$2"; shift 2;;
+    --trim-galore) TRIM_GALORE="$2"; shift 2;;
+    --cutadapt) CUTADAPT_BIN="$2"; shift 2;;
+    --star) STAR_BIN="$2"; shift 2;;
+    --bedtools) BEDTOOLS_BIN="$2"; shift 2;;
+    --samtools) SAMTOOLS_BIN="$2"; shift 2;;
+    --scripts-dir) SCRIPTS_DIR="$2"; shift 2;;
+    --concatenator) CONCATENATOR_PY="$2"; shift 2;;
+    --exint-maker) EXINT_MAKER_PY="$2"; shift 2;;
+    --get-intronsexons) GET_INTRONSEXONS="$2"; shift 2;;
+    --bcread) BCR_READ="$2"; shift 2;;
+    --bioread) BIO_READ="$2"; shift 2;;
+    --len-cbc) LEN_CBC="$2"; shift 2;;
+    --len-umi) LEN_UMI="$2"; shift 2;;
+    --umi-first) UMI_FIRST="$2"; shift 2;;
+    --cbc-hd) CBC_HD="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) ARGS+=("$1"); shift;;
+  esac
+done
+set -- "${ARGS[@]:-}"
+
+# Required checks
+[[ -s "${MANIFEST_CSV}" ]] || { echo "ERROR: manifest not found: ${MANIFEST_CSV}"; usage; exit 2; }
+
+# Make FASTA optional if a valid STAR index is given
+if [[ -n "${GENOME_INDEX:-}" ]] && valid_star_index "${GENOME_INDEX}"; then
+  : # OK, we have a usable STAR index
+else
+  [[ -n "${GENOME_FASTA:-}" ]] || { echo "ERROR: --genome-fasta is required unless a valid --genome-index is provided"; usage; exit 2; }
+  [[ -n "${GTF:-}" ]] || { echo "ERROR: --gtf is required unless EXINt BEDs already exist"; usage; exit 2; }
+fi
+
+# EXINt: allow skipping GTF if the BEDs already exist with the chosen basename
+_intr="${EXINT_DIR}/${EXINT_BASENAME}_introns.bed"
+_exo="${EXINT_DIR}/${EXINT_BASENAME}_exons.bed"
+if [[ -s "$_intr" && -s "$_exo" ]]; then
+  : # OK, EXINt provided
+else
+  [[ -n "${GTF:-}" ]] || { echo "ERROR: --gtf is required to generate EXINt BEDs (or provide both BEDs in --exint-dir)"; usage; exit 2; }
+fi
+
+# Create output dirs
+mkdir -p "${RESULTS_DIR}" "${EXINT_DIR}"
+
+# Resolve tool paths now (prefers overrides; falls back to PATH)
+resolve_all_tools
+print_tool_versions
 
 # -------- Tool sanity checks --------
 check_tools
@@ -430,3 +452,6 @@ with open(path, newline='') as f:
 PY
   run_sample "$SAMPLE" "$RAW_FQ_DIR" "$CBC_FILE"
 done
+
+# ---- Final quality summary ----
+run_multiqc

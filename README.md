@@ -40,11 +40,18 @@ The script is designed to work with tools found on your **current environment (P
 
 Create an isolated environment with all dependencies:
 ```bash
-# using mamba (fast) — install mamba if needed
-mamba create -n celseq -c conda-forge -c bioconda   python=3.10 star bedtools samtools trim-galore cutadapt multiqc
 
 # or with conda
-conda create -n celseq -c conda-forge -c bioconda   python=3.10 star bedtools samtools trim-galore cutadapt multiqc
+conda create -n celseq -c conda-forge -c bioconda \
+    python=3.10 \
+    star \
+    bedtools \
+    samtools \
+    trim-galore \
+    cutadapt \
+    multiqc \
+    pandas \
+    numpy
 
 conda activate celseq
 ```
