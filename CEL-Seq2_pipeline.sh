@@ -325,7 +325,7 @@ run_sample () {
   ensure_exint
 
   # 1) Extract barcodes/UMIs → *_cbc.fastq
-  step "(${SAMPLE}) Extracting cell barcodes and UMIs with concatenator.py"
+  step "(${SAMPLE}) Extracting cell barcodes and UMIs"
   python3 "${CONCATENATOR_PY}" \
     --fqf "${IN_PREFIX}" \
     --bcread "${BCR_READ}" \
