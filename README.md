@@ -1,6 +1,6 @@
 # CEL-Seq2 Mapping Pipeline
 
-A portable Bash pipeline for CEL-Seq2 data processing that:
+A Bash pipeline for CEL-Seq2 data processing that:
 - Reads a **manifest CSV** describing your samples
 - Extracts cell barcodes/UMIs (via `concatenator.py`)
 - Optionally **builds a STAR index** (if one does not exist)
@@ -15,7 +15,7 @@ The script is designed to work with tools found on your **current environment (P
 ## Contents (expected layout)
 ```
 .
-├── CEL-Seq2_pipeline.sh              # main script (or CEL-Seq2_pipeline_multiqc.sh)
+├── CEL-Seq2_pipeline.sh              # main script
 ├── tools/
 │   ├── concatenator.py
 │   ├── get_IntronsExons_fromGTF_mod.py
