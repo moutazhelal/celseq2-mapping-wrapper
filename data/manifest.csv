@@ -1,0 +1,2 @@
+sample,raw_fq_dir,cbc_file
+S1,/data/fastqs,/data/cbc/S1_barcodes.txt
