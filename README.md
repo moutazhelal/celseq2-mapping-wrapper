@@ -124,7 +124,7 @@ Example:
 #   Introns BED:          /ref/exint/Mousem39EXINt_introns.bed
 #   Exons BED:            /ref/exint/Mousem39EXINt_exons.bed
 
-./CEL-Seq2_pipeline.sh   --manifest data/manifest.csv   --genome-fasta /ref/Mus_musculus.GRCm39.dna.primary_assembly.fa   --gtf /ref/Mus_musculus.GRCm39.112.gtf   --genome-index /ref/STAR_Index   --exint-dir /ref/exint   --exint-basename Mousem39EXINt   --threads 16
+./CEL-Seq2_pipeline.sh   --manifest data/manifest.csv   --genome-index /ref/STAR_Index   --exint-dir /ref/exint   --exint-basename Mousem39EXINt   --threads 16
 ```
 
 In this mode, the pipeline **detects** the existing BEDs at:
@@ -167,6 +167,14 @@ results/<sample>/
 ├── <sample>_Aligned.sortedByCoord.out.bam
 └── ...                           # additional per-step outputs
 ```
+### Output gene expression matrices
+
+The pipeline produces three gene-expression matrices:
+
+- `coutc` — read counts per gene (raw read-level counts).
+- `coutb` — observed UMI counts per gene (deduplicated UMIs).
+- `coutt` — estimated transcript counts per gene (see [Nature Methods](https://www.nature.com/articles/nmeth.2930)).
+
 
 Global reports:
 ```
